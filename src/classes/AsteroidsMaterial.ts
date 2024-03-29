@@ -31,7 +31,7 @@ export class AsteroidsMaterial extends THREE.MeshPhysicalMaterial {
   }
 }
 
-// Override the default projection chunk to add in our override
+// Override the default projection chunk to add in our offset
 const projectOverride = `
   vec4 mvPosition = vec4( transformed, 1.0 );
 
