@@ -6,21 +6,24 @@ import { AsteroidsMaterial } from './AsteroidsMaterial';
 export class Viewer {
   private camera: THREE.OrthographicCamera;
   private readonly scene: THREE.Scene;
-  private cameraRange = 5;
+  private cameraRange = 12;
 
   private readonly canvasSize: THREE.Vector2;
   private readonly renderSize: THREE.Vector2;
 
   private readonly keys: Set<string>;
 
-  private readonly player: THREE.Mesh;
+  private readonly player: AsteroidsMesh;
   private readonly velocity: THREE.Vector3;
+
+  private readonly rocks: Set<AsteroidsMesh>;
 
   constructor(private readonly renderer: THREE.WebGLRenderer, private readonly canvas: HTMLCanvasElement) {
     this.canvasSize = new THREE.Vector2();
     this.renderSize = new THREE.Vector2();
 
     this.scene = new THREE.Scene();
+    this.rocks = new Set();
 
     this.camera = new THREE.OrthographicCamera(
       -this.cameraRange,
@@ -33,13 +36,36 @@ export class Viewer {
 
     const sun = new THREE.DirectionalLight(undefined, Math.PI); // undo physically correct changes
     sun.position.copy(new THREE.Vector3(0.75, 0.25, 0.5).normalize());
-    const ambient = new THREE.AmbientLight(undefined, 0.25);
+    const ambient = new THREE.AmbientLight(undefined, 0.05);
     this.scene.add(sun);
     this.scene.add(ambient);
 
     this.player = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial());
 
     this.scene.add(this.player);
+
+    for (let i = 0; i < 10; i++) {
+      const rand = 0.5 + Math.random() * 0.5;
+      const color = new THREE.Color().setHSL(0, 0, rand);
+      const rock = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color }));
+
+      rock.position.set(
+        -this.cameraRange + Math.random() * this.cameraRange * 2,
+        0,
+        -this.cameraRange + Math.random() * this.cameraRange * 2
+      );
+
+      rock.rotationRate.x = -1 + Math.random();
+      rock.rotationRate.y = -1 + Math.random();
+      rock.rotationRate.z = -1 + Math.random();
+
+      rock.velocity.randomDirection();
+      rock.velocity.y = 0;
+      rock.velocity.normalize().multiplyScalar(Math.random() * 5);
+
+      this.rocks.add(rock);
+      this.scene.add(rock);
+    }
 
     // Event listeners
     this.keys = new Set();
@@ -68,31 +94,26 @@ export class Viewer {
 
     const motionDir = new THREE.Vector3();
     this.getMovement(motionDir, dt);
+    motionDir.applyQuaternion(this.player.quaternion);
     this.velocity.add(motionDir);
 
-    this.player.position.add(this.velocity);
+    const rotation = this.player.rotationRate;
+    this.getRotation(rotation, dt);
+    this.player.rotation.y += rotation.y * dt;
 
-    // If player is outside NDC space, wrap them
-    const NDCPosition = this.player.position;
-    NDCPosition.applyMatrix4(this.camera.matrixWorldInverse);
-    NDCPosition.applyMatrix4(this.camera.projectionMatrix);
+    this.player.position.add(this.velocity.clone().multiplyScalar(dt));
 
-    // Calculate the difference and add it back
-    if (NDCPosition.x > 1.0) {
-      NDCPosition.x -= 2;
-    } else if (NDCPosition.x < -1.0) {
-      NDCPosition.x += 2;
-    }
+    this.wrapPosition(this.player);
 
-    if (NDCPosition.y > 1.0) {
-      NDCPosition.y -= 2;
-    } else if (NDCPosition.y < -1.0) {
-      NDCPosition.y += 2;
-    }
-
-    NDCPosition.applyMatrix4(this.camera.projectionMatrixInverse);
-    NDCPosition.applyMatrix4(this.camera.matrixWorld);
-    this.player.position.copy(NDCPosition);
+    this.rocks.forEach(rock => {
+      rock.position.add(rock.velocity.clone().multiplyScalar(dt));
+      rock.rotation.set(
+        rock.rotation.x + rock.rotationRate.x * dt,
+        rock.rotation.y + rock.rotationRate.y * dt,
+        rock.rotation.z + rock.rotationRate.z * dt
+      );
+      this.wrapPosition(rock);
+    });
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -119,14 +140,42 @@ export class Viewer {
       vec.add({ x: 0, y: 0, z: 1 });
     }
 
+    return vec.normalize().multiplyScalar(dt);
+  }
+
+  private getRotation(rot: THREE.Euler, dt: number): THREE.Euler {
     if (this.keys.has('a')) {
-      vec.add({ x: -1, y: 0, z: 0 });
+      rot.y += 0.025;
     }
 
     if (this.keys.has('d')) {
-      vec.add({ x: 1, y: 0, z: 0 });
+      rot.y -= 0.025;
     }
 
-    return vec.normalize().multiplyScalar(0.1 * dt);
+    return rot;
+  }
+
+  private wrapPosition(object: THREE.Mesh) {
+    // If player is outside NDC space, wrap them
+    const NDCPosition = object.position;
+    NDCPosition.applyMatrix4(this.camera.matrixWorldInverse);
+    NDCPosition.applyMatrix4(this.camera.projectionMatrix);
+
+    // Calculate the difference and add it back
+    if (NDCPosition.x > 1.0) {
+      NDCPosition.x -= 2;
+    } else if (NDCPosition.x < -1.0) {
+      NDCPosition.x += 2;
+    }
+
+    if (NDCPosition.y > 1.0) {
+      NDCPosition.y -= 2;
+    } else if (NDCPosition.y < -1.0) {
+      NDCPosition.y += 2;
+    }
+
+    NDCPosition.applyMatrix4(this.camera.projectionMatrixInverse);
+    NDCPosition.applyMatrix4(this.camera.matrixWorld);
+    object.position.copy(NDCPosition);
   }
 }
