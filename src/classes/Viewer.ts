@@ -41,6 +41,8 @@ export class Viewer {
     this.scene.add(ambient);
 
     this.player = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial());
+    const arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), undefined, 1.25, undefined, 0.5, 1);
+    this.player.add(arrowHelper);
 
     this.scene.add(this.player);
 
@@ -56,7 +58,7 @@ export class Viewer {
       );
 
       rock.rotationRate.x = -1 + Math.random();
-      rock.rotationRate.y = -1 + Math.random();
+      //rock.rotationRate.y = -1 + Math.random();
       rock.rotationRate.z = -1 + Math.random();
 
       rock.velocity.randomDirection();
@@ -101,7 +103,11 @@ export class Viewer {
     this.getRotation(rotation, dt);
     this.player.rotation.y += rotation.y * dt;
 
-    this.player.position.add(this.velocity.clone().multiplyScalar(dt));
+    this.player.position.add(this.velocity);
+    this.velocity.multiplyScalar(1 - 0.995 * dt);
+    this.player.rotationRate.x *= 1 - 0.995 * dt;
+    this.player.rotationRate.y *= 1 - 0.995 * dt;
+    this.player.rotationRate.z *= 1 - 0.995 * dt;
 
     this.wrapPosition(this.player);
 
@@ -114,6 +120,9 @@ export class Viewer {
       );
       this.wrapPosition(rock);
     });
+
+    // Collision checks
+    this.collisionChecks();
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -140,7 +149,7 @@ export class Viewer {
       vec.add({ x: 0, y: 0, z: 1 });
     }
 
-    return vec.normalize().multiplyScalar(dt);
+    return vec.normalize().multiplyScalar(dt * 0.1);
   }
 
   private getRotation(rot: THREE.Euler, dt: number): THREE.Euler {
@@ -177,5 +186,40 @@ export class Viewer {
     NDCPosition.applyMatrix4(this.camera.projectionMatrixInverse);
     NDCPosition.applyMatrix4(this.camera.matrixWorld);
     object.position.copy(NDCPosition);
+  }
+
+  private collisionChecks() {
+    const rocks = Array.from(this.rocks);
+
+    for (let i = 0; i < rocks.length; i++) {
+      // Ensure we don't get double checking
+      for (let j = i + 1; j < rocks.length; j++) {
+        const a = rocks[i];
+        const b = rocks[j];
+
+        let distance = a.position.distanceTo(b.position);
+
+        // Subtract both the spherical radii from this distance
+        distance -= a.boundingSphere!.radius;
+        distance -= b.boundingSphere!.radius;
+
+        // If negative, we have a collision
+        if (distance < 0) {
+          //console.log('collision!', distance);
+
+          const direction = a.position.clone().sub(b.position).normalize();
+
+          const dot = a.velocity.dot(b.velocity);
+
+          // Separate the two objects
+          direction.multiplyScalar(-distance * 0.5);
+          a.position.add(direction);
+          b.position.add(direction.multiplyScalar(-1));
+
+          // a.velocity.multiplyScalar(-1);
+          // b.velocity.multiplyScalar(-1);
+        }
+      }
+    }
   }
 }

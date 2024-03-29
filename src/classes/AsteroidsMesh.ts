@@ -10,5 +10,7 @@ export class AsteroidsMesh extends THREE.InstancedMesh {
 
     this.rotationRate = new THREE.Euler();
     this.velocity = new THREE.Vector3();
+
+    this.computeBoundingSphere();
   }
 }
