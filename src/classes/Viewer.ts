@@ -46,7 +46,7 @@ export class Viewer {
 
     this.scene.add(this.player);
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 25; i++) {
       const rand = 0.5 + Math.random() * 0.5;
       const color = new THREE.Color().setHSL(0, 0, rand);
       const rock = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color }));
@@ -122,7 +122,7 @@ export class Viewer {
     });
 
     // Collision checks
-    this.collisionChecks();
+    this.collisionChecks(dt);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -188,7 +188,7 @@ export class Viewer {
     object.position.copy(NDCPosition);
   }
 
-  private collisionChecks() {
+  private collisionChecks(dt: number) {
     const rocks = Array.from(this.rocks);
 
     for (let i = 0; i < rocks.length; i++) {
@@ -209,15 +209,19 @@ export class Viewer {
 
           const direction = a.position.clone().sub(b.position).normalize();
 
-          const dot = a.velocity.dot(b.velocity);
+          const aVel = a.velocity.clone();
+          const bVel = b.velocity.clone();
+
+          const aFinal = aVel.add(bVel).multiplyScalar(0.5);
+          const bFinal = bVel.add(a.velocity).multiplyScalar(0.5);
+
+          a.velocity.copy(aFinal);
+          b.velocity.copy(bFinal);
 
           // Separate the two objects
           direction.multiplyScalar(-distance * 0.5);
           a.position.add(direction);
           b.position.add(direction.multiplyScalar(-1));
-
-          // a.velocity.multiplyScalar(-1);
-          // b.velocity.multiplyScalar(-1);
         }
       }
     }
