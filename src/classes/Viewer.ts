@@ -46,10 +46,13 @@ export class Viewer {
 
     this.scene.add(this.player);
 
-    for (let i = 0; i < 25; i++) {
-      const rand = 0.5 + Math.random() * 0.5;
-      const color = new THREE.Color().setHSL(0, 0, rand);
+    for (let i = 0; i < 15; i++) {
+      const color = new THREE.Color().setHSL(0, 0, 1);
       const rock = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color }));
+
+      const rand = 0.15 + Math.sqrt(Math.random() * 2);
+      rock.scale.multiplyScalar(rand);
+      rock.mass = rand;
 
       rock.position.set(
         -this.cameraRange + Math.random() * this.cameraRange * 2,
@@ -191,6 +194,7 @@ export class Viewer {
   private collisionChecks(dt: number) {
     const rocks = Array.from(this.rocks);
 
+    // Todo: this will miss collisions when wrapping
     for (let i = 0; i < rocks.length; i++) {
       // Ensure we don't get double checking
       for (let j = i + 1; j < rocks.length; j++) {
@@ -200,8 +204,8 @@ export class Viewer {
         let distance = a.position.distanceTo(b.position);
 
         // Subtract both the spherical radii from this distance
-        distance -= a.boundingSphere!.radius;
-        distance -= b.boundingSphere!.radius;
+        distance -= a.boundingSphere!.radius * a.scale.length() * 0.5;
+        distance -= b.boundingSphere!.radius * b.scale.length() * 0.5;
 
         // If negative, we have a collision
         if (distance < 0) {
@@ -209,14 +213,14 @@ export class Viewer {
 
           const direction = a.position.clone().sub(b.position).normalize();
 
-          const aVel = a.velocity.clone();
-          const bVel = b.velocity.clone();
+          const relativeVelocity = a.velocity.clone().sub(b.velocity);
+          const impactSpeed = relativeVelocity.dot(direction);
 
-          const aFinal = aVel.add(bVel).multiplyScalar(0.5);
-          const bFinal = bVel.add(a.velocity).multiplyScalar(0.5);
+          console.log(impactSpeed);
 
-          a.velocity.copy(aFinal);
-          b.velocity.copy(bFinal);
+          const impulse = (2 * impactSpeed) / (a.mass + b.mass);
+          a.velocity.add(direction.clone().multiplyScalar(-impulse * b.mass));
+          b.velocity.add(direction.clone().multiplyScalar(impulse * a.mass));
 
           // Separate the two objects
           direction.multiplyScalar(-distance * 0.5);
