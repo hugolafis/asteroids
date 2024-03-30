@@ -14,7 +14,6 @@ export class Viewer {
   private readonly keys: Set<string>;
 
   private readonly player: AsteroidsMesh;
-  private readonly velocity: THREE.Vector3;
 
   private readonly rocks: Set<AsteroidsMesh>;
 
@@ -43,16 +42,17 @@ export class Viewer {
     this.player = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial());
     const arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), undefined, 1.25, undefined, 0.5, 1);
     this.player.add(arrowHelper);
+    this.player.mass = 10;
 
     this.scene.add(this.player);
 
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 10; i++) {
       const color = new THREE.Color().setHSL(0, 0, 1);
       const rock = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color }));
 
-      const rand = 0.15 + Math.sqrt(Math.random() * 2);
+      const rand = 0.5 + Math.random();
       rock.scale.multiplyScalar(rand);
-      rock.mass = rand;
+      rock.mass = (4 / 3) * Math.PI * Math.pow(rand, 3);
 
       rock.position.set(
         -this.cameraRange + Math.random() * this.cameraRange * 2,
@@ -74,7 +74,6 @@ export class Viewer {
 
     // Event listeners
     this.keys = new Set();
-    this.velocity = new THREE.Vector3();
     this.canvas.addEventListener('keydown', this.onKeyPress);
     this.canvas.addEventListener('keyup', this.onKeyUp);
     this.canvas.addEventListener('focusout', this.focusLoss);
@@ -100,14 +99,14 @@ export class Viewer {
     const motionDir = new THREE.Vector3();
     this.getMovement(motionDir, dt);
     motionDir.applyQuaternion(this.player.quaternion);
-    this.velocity.add(motionDir);
+    this.player.velocity.add(motionDir);
 
     const rotation = this.player.rotationRate;
     this.getRotation(rotation, dt);
     this.player.rotation.y += rotation.y * dt;
 
-    this.player.position.add(this.velocity);
-    this.velocity.multiplyScalar(1 - 0.995 * dt);
+    this.player.position.add(this.player.velocity.clone().multiplyScalar(dt));
+    this.player.velocity.multiplyScalar(1 - 0.995 * dt);
     this.player.rotationRate.x *= 1 - 0.995 * dt;
     this.player.rotationRate.y *= 1 - 0.995 * dt;
     this.player.rotationRate.z *= 1 - 0.995 * dt;
@@ -152,16 +151,16 @@ export class Viewer {
       vec.add({ x: 0, y: 0, z: 1 });
     }
 
-    return vec.normalize().multiplyScalar(dt * 0.1);
+    return vec.normalize().multiplyScalar(0.1);
   }
 
   private getRotation(rot: THREE.Euler, dt: number): THREE.Euler {
     if (this.keys.has('a')) {
-      rot.y += 0.025;
+      rot.y += 0.04;
     }
 
     if (this.keys.has('d')) {
-      rot.y -= 0.025;
+      rot.y -= 0.04;
     }
 
     return rot;
@@ -188,11 +187,11 @@ export class Viewer {
 
     NDCPosition.applyMatrix4(this.camera.projectionMatrixInverse);
     NDCPosition.applyMatrix4(this.camera.matrixWorld);
-    object.position.copy(NDCPosition);
   }
 
   private collisionChecks(dt: number) {
     const rocks = Array.from(this.rocks);
+    rocks.push(this.player);
 
     // Todo: this will miss collisions when wrapping
     for (let i = 0; i < rocks.length; i++) {
@@ -216,7 +215,7 @@ export class Viewer {
           const relativeVelocity = a.velocity.clone().sub(b.velocity);
           const impactSpeed = relativeVelocity.dot(direction);
 
-          console.log(impactSpeed);
+          //console.log(impactSpeed);
 
           const impulse = (2 * impactSpeed) / (a.mass + b.mass);
           a.velocity.add(direction.clone().multiplyScalar(-impulse * b.mass));

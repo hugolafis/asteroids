@@ -3,6 +3,7 @@ import { AsteroidsMaterial } from './AsteroidsMaterial';
 
 export class AsteroidsMesh extends THREE.InstancedMesh {
   mass = 1;
+  health = 100;
   readonly rotationRate: THREE.Euler;
   readonly velocity: THREE.Vector3;
 
