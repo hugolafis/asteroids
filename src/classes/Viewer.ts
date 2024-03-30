@@ -217,7 +217,13 @@ export class Viewer {
 
           //console.log(impactSpeed);
 
-          const impulse = (2 * impactSpeed) / (a.mass + b.mass);
+          let impulse = (2 * impactSpeed) / (a.mass + b.mass);
+
+          // Artifically lower the impulse to introduce some entropy
+          // This helps prevent small objects being accelerated to high velocities
+          // More energy will be provided by new spawns
+          impulse *= 0.8;
+
           a.velocity.add(direction.clone().multiplyScalar(-impulse * b.mass));
           b.velocity.add(direction.clone().multiplyScalar(impulse * a.mass));
 
