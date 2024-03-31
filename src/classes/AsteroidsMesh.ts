@@ -3,7 +3,7 @@ import { AsteroidsMaterial } from './AsteroidsMaterial';
 
 export class AsteroidsMesh extends THREE.InstancedMesh {
   mass = 1;
-  health = 100;
+  health = 10;
   readonly rotationRate: THREE.Euler;
   readonly velocity: THREE.Vector3;
 
@@ -12,6 +12,9 @@ export class AsteroidsMesh extends THREE.InstancedMesh {
 
     this.rotationRate = new THREE.Euler();
     this.velocity = new THREE.Vector3();
+
+    this.rotationRate.x = -1 + Math.random();
+    this.rotationRate.z = -1 + Math.random();
 
     this.computeBoundingSphere();
   }

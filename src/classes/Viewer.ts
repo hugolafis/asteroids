@@ -43,10 +43,11 @@ export class Viewer {
     const arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), undefined, 1.25, undefined, 0.5, 1);
     this.player.add(arrowHelper);
     this.player.mass = 10;
+    this.player.health = 9999;
 
     this.scene.add(this.player);
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 25; i++) {
       const color = new THREE.Color().setHSL(0, 0, 1);
       const rock = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color }));
 
@@ -60,6 +61,7 @@ export class Viewer {
         -this.cameraRange + Math.random() * this.cameraRange * 2
       );
 
+      rock.quaternion.random();
       rock.rotationRate.x = -1 + Math.random();
       //rock.rotationRate.y = -1 + Math.random();
       rock.rotationRate.z = -1 + Math.random();
@@ -125,6 +127,9 @@ export class Viewer {
 
     // Collision checks
     this.collisionChecks(dt);
+
+    // Kill dead enemies
+    this.destroyObjects();
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -227,6 +232,9 @@ export class Viewer {
           a.velocity.add(direction.clone().multiplyScalar(-impulse * b.mass));
           b.velocity.add(direction.clone().multiplyScalar(impulse * a.mass));
 
+          a.health -= Math.abs(impulse * b.mass);
+          b.health -= Math.abs(impulse * a.mass);
+
           // Separate the two objects
           direction.multiplyScalar(-distance * 0.5);
           a.position.add(direction);
@@ -235,4 +243,66 @@ export class Viewer {
       }
     }
   }
+
+  private destroyObjects() {
+    const rocks = Array.from(this.rocks);
+    const newMeshes: AsteroidsMesh[] = [];
+
+    for (let i = rocks.length; i--; ) {
+      if (rocks[i].health <= 0) {
+        const rock = rocks[i];
+
+        this.scene.remove(rock);
+        rock.dispose();
+        rock.geometry.dispose();
+        (rock.material as AsteroidsMaterial).dispose();
+
+        createChildRocks(rock, newMeshes);
+        this.rocks.delete(rock);
+      }
+    }
+
+    for (let i = 0; i < newMeshes.length; i++) {
+      this.rocks.add(newMeshes[i]);
+      this.scene.add(newMeshes[i]);
+    }
+  }
+}
+
+// For a destroyed rock, create two smaller asteroids
+function createChildRocks(rock: AsteroidsMesh, newMeshes: AsteroidsMesh[]): void {
+  const size = rock.scale.length();
+  // Rock is too small, just destroy it
+  if (size < 1.414) {
+    console.log(size);
+    return;
+  }
+
+  const a = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color: 0xff0000 }));
+  const b = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color: 0xff0000 }));
+
+  const halfScale = rock.scale.multiplyScalar(0.5);
+
+  const up = new THREE.Vector3(0, 1, 0);
+  a.position.copy(rock.position);
+  a.mass = rock.mass * 0.25; // not really correct, will be heavier than it should be
+  a.velocity.copy(rock.velocity);
+  a.velocity.applyAxisAngle(up, -Math.PI / 8);
+  a.scale.copy(halfScale);
+
+  b.position.copy(rock.position);
+  b.mass = rock.mass * 0.25;
+  b.velocity.copy(rock.velocity);
+  b.velocity.applyAxisAngle(up, Math.PI / 8);
+  b.scale.copy(halfScale);
+
+  const cross = rock.velocity.clone().cross(up).normalize();
+  cross.multiply(halfScale);
+  a.position.add(cross);
+  b.position.add(cross.multiplyScalar(-1));
+
+  a.quaternion.random();
+  b.quaternion.random();
+
+  newMeshes.push(a, b);
 }
