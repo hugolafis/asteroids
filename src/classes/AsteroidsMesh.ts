@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { AsteroidsMaterial } from './AsteroidsMaterial';
 
 export class AsteroidsMesh extends THREE.InstancedMesh {
+  declare material: AsteroidsMaterial;
+
   mass = 1;
   health = 10;
   readonly rotationRate: THREE.Euler;

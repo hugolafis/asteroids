@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { AsteroidsMesh } from './AsteroidsMesh';
 import { AsteroidsMaterial } from './AsteroidsMaterial';
 
@@ -17,12 +18,16 @@ export class Viewer {
 
   private readonly rocks: Set<AsteroidsMesh>;
 
+  private readonly resources: Map<string, THREE.Mesh | THREE.Texture>;
+
   constructor(private readonly renderer: THREE.WebGLRenderer, private readonly canvas: HTMLCanvasElement) {
     this.canvasSize = new THREE.Vector2();
     this.renderSize = new THREE.Vector2();
 
     this.scene = new THREE.Scene();
     this.rocks = new Set();
+
+    this.resources = new Map();
 
     this.camera = new THREE.OrthographicCamera(
       -this.cameraRange,
@@ -31,54 +36,106 @@ export class Viewer {
       -this.cameraRange
     );
     this.camera.rotation.x = -Math.PI / 2;
-    this.camera.position.set(0, 5, 0);
+    this.camera.position.set(0, 25, 0);
 
     const sun = new THREE.DirectionalLight(undefined, Math.PI); // undo physically correct changes
     sun.position.copy(new THREE.Vector3(0.75, 0.25, 0.5).normalize());
-    const ambient = new THREE.AmbientLight(undefined, 0.05);
+    const ambient = new THREE.AmbientLight(undefined, 0.0);
     this.scene.add(sun);
     this.scene.add(ambient);
 
     this.player = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial());
     const arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), undefined, 1.25, undefined, 0.5, 1);
     this.player.add(arrowHelper);
-    this.player.mass = 10;
+    this.player.mass = 1;
     this.player.health = 9999;
+
+    const playerSpotlight = new THREE.SpotLight();
+    playerSpotlight.penumbra = 0.5;
+    playerSpotlight.position.set(0, 0, -0);
+    const dummyTarget = new THREE.Object3D();
+    dummyTarget.position.set(0, 0, -5);
+    playerSpotlight.target = dummyTarget;
+    this.player.add(playerSpotlight);
+    this.player.add(dummyTarget);
 
     this.scene.add(this.player);
 
-    for (let i = 0; i < 25; i++) {
-      const color = new THREE.Color().setHSL(0, 0, 1);
-      const rock = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color }));
+    // todo functionise this
+    this.loadAssets().then(() => {
+      let normalMap: THREE.Texture;
+      let mesh: THREE.Mesh;
 
-      const rand = 0.5 + Math.random();
-      rock.scale.multiplyScalar(rand);
-      rock.mass = (4 / 3) * Math.PI * Math.pow(rand, 3);
+      for (let i = 0; i < 25; i++) {
+        if (Math.random() < 0.5) {
+          normalMap = this.resources.get('asteroid_nrm') as THREE.Texture;
+          mesh = this.resources.get('asteroid') as THREE.Mesh;
+        } else {
+          normalMap = this.resources.get('asteroid_small_nrm') as THREE.Texture;
+          mesh = this.resources.get('asteroid_small') as THREE.Mesh;
+        }
 
-      rock.position.set(
-        -this.cameraRange + Math.random() * this.cameraRange * 2,
-        0,
-        -this.cameraRange + Math.random() * this.cameraRange * 2
-      );
+        const color = new THREE.Color().setHSL(0, 0, 1);
+        const rock = new AsteroidsMesh(mesh.geometry, new AsteroidsMaterial({ color, normalMap }));
 
-      rock.quaternion.random();
-      rock.rotationRate.x = -1 + Math.random();
-      //rock.rotationRate.y = -1 + Math.random();
-      rock.rotationRate.z = -1 + Math.random();
+        const rand = 0.5 + Math.random();
+        rock.scale.copy(mesh.scale);
+        rock.scale.multiplyScalar(rand);
+        rock.mass = (4 / 3) * Math.PI * Math.pow(rand, 3);
 
-      rock.velocity.randomDirection();
-      rock.velocity.y = 0;
-      rock.velocity.normalize().multiplyScalar(Math.random() * 5);
+        rock.position.set(
+          -this.cameraRange + Math.random() * this.cameraRange * 2,
+          0,
+          -this.cameraRange + Math.random() * this.cameraRange * 2
+        );
 
-      this.rocks.add(rock);
-      this.scene.add(rock);
-    }
+        rock.quaternion.random();
+        rock.rotationRate.x = -1 + Math.random();
+        //rock.rotationRate.y = -1 + Math.random();
+        rock.rotationRate.z = -1 + Math.random();
+
+        rock.velocity.randomDirection();
+        rock.velocity.y = 0;
+        rock.velocity.normalize().multiplyScalar(Math.random() * 5);
+
+        this.rocks.add(rock);
+        this.scene.add(rock);
+      }
+    });
 
     // Event listeners
     this.keys = new Set();
     this.canvas.addEventListener('keydown', this.onKeyPress);
     this.canvas.addEventListener('keyup', this.onKeyUp);
     this.canvas.addEventListener('focusout', this.focusLoss);
+  }
+
+  private async loadAssets(): Promise<void> {
+    const fbxLoader = new FBXLoader();
+    const gltfLoader = new GLTFLoader();
+    const textureLoader = new THREE.TextureLoader();
+
+    return Promise.all([
+      textureLoader.loadAsync('./assets/asteroid_nrm.png'),
+      textureLoader.loadAsync('./assets/asteroid_small_nrm.png'),
+      fbxLoader.loadAsync('./assets/asteroids.fbx'),
+      fbxLoader.loadAsync('./assets/asteroid_small.fbx'),
+    ])
+      .then(data => {
+        const texture = data[0];
+        const texture2 = data[1];
+        //texture.flipY = false;a
+        const mesh = data[2].children[0] as THREE.Mesh;
+        const mesh2 = data[3].children[0] as THREE.Mesh;
+
+        this.resources.set('asteroid', mesh);
+        this.resources.set('asteroid_small', mesh2);
+        this.resources.set('asteroid_nrm', texture);
+        this.resources.set('asteroid_small_nrm', texture2);
+
+        return Promise.resolve();
+      })
+      .catch(() => Promise.reject('Failure to load assets'));
   }
 
   readonly update = (dt: number) => {
@@ -126,6 +183,7 @@ export class Viewer {
     });
 
     // Collision checks
+    this.collisionChecks(dt);
     this.collisionChecks(dt);
 
     // Kill dead enemies
@@ -273,13 +331,13 @@ export class Viewer {
 function createChildRocks(rock: AsteroidsMesh, newMeshes: AsteroidsMesh[]): void {
   const size = rock.scale.length();
   // Rock is too small, just destroy it
-  if (size < 1.414) {
+  if (size < 1.414 * 0.01) {
     console.log(size);
     return;
   }
 
-  const a = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color: 0xff0000 }));
-  const b = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial({ color: 0xff0000 }));
+  const a = new AsteroidsMesh(rock.geometry, new AsteroidsMaterial({ normalMap: rock.material.normalMap }));
+  const b = new AsteroidsMesh(rock.geometry, new AsteroidsMaterial({ normalMap: rock.material.normalMap }));
 
   const halfScale = rock.scale.multiplyScalar(0.5);
 
