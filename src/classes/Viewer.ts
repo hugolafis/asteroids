@@ -3,20 +3,23 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { AsteroidsMesh } from './AsteroidsMesh';
 import { AsteroidsMaterial } from './AsteroidsMaterial';
+import { Player } from './Player';
+import { Projectile } from './Projectile';
 
 export class Viewer {
   private camera: THREE.OrthographicCamera;
   private readonly scene: THREE.Scene;
-  private cameraRange = 12;
+  private cameraRange = 14;
 
   private readonly canvasSize: THREE.Vector2;
   private readonly renderSize: THREE.Vector2;
 
   private readonly keys: Set<string>;
 
-  private readonly player: AsteroidsMesh;
+  private readonly player: Player;
 
   private readonly rocks: Set<AsteroidsMesh>;
+  private readonly projectiles: Set<Projectile>;
 
   private readonly resources: Map<string, THREE.Mesh | THREE.Texture>;
 
@@ -26,6 +29,7 @@ export class Viewer {
 
     this.scene = new THREE.Scene();
     this.rocks = new Set();
+    this.projectiles = new Set();
 
     this.resources = new Map();
 
@@ -44,7 +48,7 @@ export class Viewer {
     this.scene.add(sun);
     this.scene.add(ambient);
 
-    this.player = new AsteroidsMesh(new THREE.BoxGeometry(), new AsteroidsMaterial());
+    this.player = new Player(new THREE.BoxGeometry(), new AsteroidsMaterial());
     const arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), undefined, 1.25, undefined, 0.5, 1);
     this.player.add(arrowHelper);
     this.player.mass = 1;
@@ -155,6 +159,7 @@ export class Viewer {
       this.camera.updateProjectionMatrix();
     }
 
+    this.player.update(dt);
     const motionDir = new THREE.Vector3();
     this.getMovement(motionDir, dt);
     motionDir.applyQuaternion(this.player.quaternion);
@@ -165,12 +170,28 @@ export class Viewer {
     this.player.rotation.y += rotation.y * dt;
 
     this.player.position.add(this.player.velocity.clone().multiplyScalar(dt));
-    this.player.velocity.multiplyScalar(1 - 0.995 * dt);
-    this.player.rotationRate.x *= 1 - 0.995 * dt;
-    this.player.rotationRate.y *= 1 - 0.995 * dt;
-    this.player.rotationRate.z *= 1 - 0.995 * dt;
+    this.player.velocity.multiplyScalar(1 - dt);
+    this.player.rotationRate.x *= 1 - dt;
+    this.player.rotationRate.y *= 1 - dt;
+    this.player.rotationRate.z *= 1 - dt;
 
     this.wrapPosition(this.player);
+
+    // Bullets
+    if (this.keys.has('Space')) {
+      const projectile = this.player.fire();
+
+      if (projectile) {
+        this.projectiles.add(projectile);
+        this.scene.add(projectile);
+      }
+    }
+
+    this.projectiles.forEach(projectile => {
+      projectile.position.add(projectile.velocity.clone().multiplyScalar(dt));
+
+      this.wrapPosition(projectile);
+    });
 
     this.rocks.forEach(rock => {
       rock.position.add(rock.velocity.clone().multiplyScalar(dt));
@@ -182,8 +203,10 @@ export class Viewer {
       this.wrapPosition(rock);
     });
 
+    // Projectile collision
+    this.projectileCollisions();
+
     // Collision checks
-    this.collisionChecks(dt);
     this.collisionChecks(dt);
 
     // Kill dead enemies
@@ -193,11 +216,11 @@ export class Viewer {
   };
 
   private readonly onKeyPress = (ev: KeyboardEvent) => {
-    this.keys.add(ev.key.toLowerCase());
+    this.keys.add(ev.code);
   };
 
   private readonly onKeyUp = (key: KeyboardEvent) => {
-    this.keys.delete(key.key.toLowerCase());
+    this.keys.delete(key.code);
   };
 
   private readonly focusLoss = () => {
@@ -206,11 +229,11 @@ export class Viewer {
   };
 
   private getMovement(vec: THREE.Vector3, dt: number): THREE.Vector3 {
-    if (this.keys.has('w')) {
+    if (this.keys.has('KeyW')) {
       vec.add({ x: 0, y: 0, z: -1 });
     }
 
-    if (this.keys.has('s')) {
+    if (this.keys.has('KeyS')) {
       vec.add({ x: 0, y: 0, z: 1 });
     }
 
@@ -218,11 +241,11 @@ export class Viewer {
   }
 
   private getRotation(rot: THREE.Euler, dt: number): THREE.Euler {
-    if (this.keys.has('a')) {
+    if (this.keys.has('KeyA')) {
       rot.y += 0.04;
     }
 
-    if (this.keys.has('d')) {
+    if (this.keys.has('KeyD')) {
       rot.y -= 0.04;
     }
 
@@ -253,15 +276,21 @@ export class Viewer {
   }
 
   private collisionChecks(dt: number) {
-    const rocks = Array.from(this.rocks);
-    rocks.push(this.player);
+    const objects = Array.from(this.rocks);
+    objects.push(this.player);
+    //objects.push(...this.projectiles); // todo: do this better
 
     // Todo: this will miss collisions when wrapping
-    for (let i = 0; i < rocks.length; i++) {
+    for (let i = 0; i < objects.length; i++) {
       // Ensure we don't get double checking
-      for (let j = i + 1; j < rocks.length; j++) {
-        const a = rocks[i];
-        const b = rocks[j];
+      for (let j = i + 1; j < objects.length; j++) {
+        const a = objects[i];
+        const b = objects[j];
+
+        // If they're dead, continue
+        if (a.health <= 0 || b.health <= 0) {
+          continue;
+        }
 
         let distance = a.position.distanceTo(b.position);
 
@@ -290,13 +319,49 @@ export class Viewer {
           a.velocity.add(direction.clone().multiplyScalar(-impulse * b.mass));
           b.velocity.add(direction.clone().multiplyScalar(impulse * a.mass));
 
-          a.health -= Math.abs(impulse * b.mass);
-          b.health -= Math.abs(impulse * a.mass);
+          a.health -= Math.ceil(Math.abs(impulse * b.mass));
+          b.health -= Math.ceil(Math.abs(impulse * a.mass));
 
           // Separate the two objects
           direction.multiplyScalar(-distance * 0.5);
           a.position.add(direction);
           b.position.add(direction.multiplyScalar(-1));
+        }
+      }
+    }
+  }
+
+  private projectileCollisions() {
+    const projectiles = Array.from(this.projectiles);
+    const objects = Array.from(this.rocks);
+    objects.push(this.player);
+
+    // For each projectile, find if it's collided with an object
+    for (let i = projectiles.length; i--; ) {
+      const projectile = projectiles[i];
+
+      for (let j = 0; j < objects.length; j++) {
+        if (objects[j].health <= 0) {
+          continue;
+        }
+
+        const object = objects[j];
+
+        let distance = projectile.position.distanceTo(object.position);
+
+        // Subtract both the spherical radii from this distance
+        distance -= projectile.boundingSphere!.radius * projectile.scale.length() * 0.5;
+        distance -= object.boundingSphere!.radius * object.scale.length() * 0.5;
+
+        if (distance < 0) {
+          object.health -= projectile.damage;
+
+          this.scene.remove(projectile);
+          projectile.dispose();
+          projectile.geometry.dispose();
+          (projectile.material as AsteroidsMaterial).dispose();
+
+          this.projectiles.delete(projectile);
         }
       }
     }
@@ -324,6 +389,19 @@ export class Viewer {
       this.rocks.add(newMeshes[i]);
       this.scene.add(newMeshes[i]);
     }
+
+    const projectiles = Array.from(this.projectiles);
+    for (let i = projectiles.length; i--; ) {
+      if (projectiles[i].health <= 0) {
+        const projectile = projectiles[i];
+
+        this.scene.remove(projectile);
+        projectile.dispose();
+        projectile.geometry.dispose();
+        (projectile.material as AsteroidsMaterial).dispose();
+        this.projectiles.delete(projectile);
+      }
+    }
   }
 }
 
@@ -331,8 +409,8 @@ export class Viewer {
 function createChildRocks(rock: AsteroidsMesh, newMeshes: AsteroidsMesh[]): void {
   const size = rock.scale.length();
   // Rock is too small, just destroy it
+  // todo: shouldn't assume scale of 0.01 from fbx
   if (size < 1.414 * 0.01) {
-    console.log(size);
     return;
   }
 
@@ -363,4 +441,8 @@ function createChildRocks(rock: AsteroidsMesh, newMeshes: AsteroidsMesh[]): void
   b.quaternion.random();
 
   newMeshes.push(a, b);
+}
+
+function isProjectile(a: AsteroidsMesh | Projectile): a is Projectile {
+  return !!(a as Projectile).damage;
 }
