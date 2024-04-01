@@ -6,6 +6,11 @@ import { AsteroidsMaterial } from './AsteroidsMaterial';
 import { Player } from './Player';
 import { Projectile } from './Projectile';
 
+export interface GameState {
+  playerHealth: number;
+  isDead: boolean;
+}
+
 export class Viewer {
   private camera: THREE.OrthographicCamera;
   private readonly scene: THREE.Scene;
@@ -52,7 +57,7 @@ export class Viewer {
     const arrowHelper = new THREE.ArrowHelper(new THREE.Vector3(0, 0, -1), undefined, 1.25, undefined, 0.5, 1);
     this.player.add(arrowHelper);
     this.player.mass = 1;
-    this.player.health = 9999;
+    this.player.health = 20;
 
     const playerSpotlight = new THREE.SpotLight();
     playerSpotlight.penumbra = 0.5;
@@ -142,7 +147,7 @@ export class Viewer {
       .catch(() => Promise.reject('Failure to load assets'));
   }
 
-  readonly update = (dt: number) => {
+  readonly update = (dt: number): GameState => {
     // Do we need to resize the renderer?
     this.canvasSize.set(
       Math.floor(this.canvas.parentElement!.clientWidth),
@@ -213,6 +218,8 @@ export class Viewer {
     this.destroyObjects();
 
     this.renderer.render(this.scene, this.camera);
+
+    return { playerHealth: this.player.health, isDead: this.player.health <= 0 };
   };
 
   private readonly onKeyPress = (ev: KeyboardEvent) => {

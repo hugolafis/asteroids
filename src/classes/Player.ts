@@ -31,7 +31,7 @@ export class Player extends AsteroidsMesh {
     // todo move into projectile class definitions
     const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(this.quaternion);
     projectile.position.copy(this.position).add(direction);
-    projectile.velocity.copy(direction.multiplyScalar(10));
+    projectile.velocity.copy(this.velocity.clone().add(direction.multiplyScalar(10)));
     projectile.quaternion.copy(this.quaternion);
 
     return projectile;

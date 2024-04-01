@@ -32,14 +32,38 @@ function init() {
   update();
 }
 
+let animationFrame: number | undefined = undefined;
+let slowDown = 1;
+let slowDownElapsed = 0;
+let slowDownDuration = 2;
 function update() {
   // Calculate delta
   const delta = clock.getDelta();
 
   // Update the viewer
-  viewer.update(delta);
+  const state = viewer.update(delta * slowDown);
 
-  window.requestAnimationFrame(update);
+  animationFrame = window.requestAnimationFrame(update);
+
+  if (state.isDead) {
+    slowDownElapsed += delta;
+    slowDown = lerp(1, 0, easeOutCubic(slowDownElapsed / slowDownDuration));
+    canvas!.style.filter = `blur(5px) brightness(1.25)`;
+  }
+
+  if (slowDown <= 0.01) {
+    window.cancelAnimationFrame(animationFrame);
+  }
+
+  console.log(state.playerHealth);
 }
 
 init();
+
+function lerp(a: number, b: number, t: number): number {
+  return a + t * (b - a);
+}
+
+function easeOutCubic(x: number): number {
+  return 1 - Math.pow(1 - x, 3);
+}
